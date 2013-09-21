@@ -1,5 +1,7 @@
 # -*- coding:utf-8 -*-
 from collections import defaultdict
+import copy
+from .langhelpers import ClassTypes
 import imp
 
 class InvalidContract(Exception):
@@ -9,6 +11,8 @@ class InvalidDefinition(Exception):
 class DefinitionNameConflict(InvalidDefinition):
     pass
 class DefinitionNotFound(InvalidDefinition):
+    pass
+class WalkerNotFound(Exception):
     pass
 
 class ModuleProvider(object):
@@ -56,11 +60,11 @@ class Dispatch(object):
         except KeyError:
             return name
        
-    def is_table_name(self, target):
+    def has_table_name(self, target):
         return "table_name" in target
-    def is_table(self, target):
+    def has_table(self, target):
         return "table" in target
-    def is_model(self, target):
+    def has_model(self, target):
         return "model" in target
 
     def target_of(self, name):
@@ -68,22 +72,22 @@ class Dispatch(object):
 
     def table_name_of(self, name):
         target = self.target_of(name)
-        if self.is_table_name(target):
+        if self.has_table_name(target):
             return target["table_name"]
-        elif self.is_table(target):
+        elif self.has_table(target):
             return target["table"].name
-        elif self.is_model(target):
+        elif self.has_model(target):
             return target["model"].__tablename__
         else:
             raise InvalidContract("contract[{name}] must be include 'table_name' or 'table' or 'model'".format(name=name))
 
     def create_attrs(self, name, on_table=None, on_tablename=None):
         target = self.target_of(name)
-        if self.is_table_name(target):
+        if self.has_table_name(target):
             attrs = {"__tablename__": target["table_name"]}
             on_tablename and on_tablename(attrs)
             return attrs
-        elif self.is_table(target):
+        elif self.has_table(target):
             attrs = {"__table__":  target["table"]}
             on_table and on_table(attrs)
             return attrs
@@ -92,16 +96,17 @@ class Dispatch(object):
 
     def create_model(self, definition, name, model_name):
         target = self.target_of(name)
-        if self.is_model(target):
+        if self.has_model(target):
             return target["model"]
         return definition(self, self.bases, name, model_name)
 
 class ModelCreation(object):
-    def __init__(self, module_name="models", dispatch_impl=Dispatch, strict=False):
+    def __init__(self, module_name="models", dispatch_impl=Dispatch, strict=True):
         self.module_name = module_name
         self.depends = defaultdict(list) ##TODO: topological sorting
         self.definitions = {}
         self.dispatch_impl = dispatch_impl
+        self.strict = strict
 
     def needs(self, names):
         r = []
@@ -126,11 +131,18 @@ class ModelCreation(object):
         self.definitions[name] = definition
 
     def register(self, name, depends=None):
-        def _register(definition):
-            self.add_definition(name, definition, depends=depends)
-            return definition
+        def _register(target):
+            if isinstance(target, ClassTypes):
+                walker = get_walker(target)
+                definition = walker.create_definition(self, target)
+                self.add_definition(name, definition, depends=depends)
+                return target
+            else:
+                definition = target
+                self.add_definition(name, definition, depends=depends)
+                return definition
         return _register
-    
+
     def __call__(self, bases, contract):
         module = imp.new_module(self.module_name)
         dispatch = self.dispatch_impl(bases, contract)
@@ -149,3 +161,79 @@ def attach_method(D):
         D[fn.__name__] = fn
         return fn
     return _attach_method
+
+_walker_attr = "_walker"
+def get_walker(target):
+    try:
+        return getattr(target, _walker_attr)
+    except:
+        fmt = "walker is not found in {taret!r}."
+        raise WalkerNotFound(fmt.format(taret=target))
+
+class Marker(object):
+    def __init__(self, tag):
+        self.tag = tag
+
+    def mark(self, target):
+        setattr(target, self.tag, True)
+        return target
+
+    def is_marked(self, target):
+        return hasattr(target, self.tag)
+
+DeferredAttributeMarker = Marker("___sqlqb_deffered")
+
+class AttributesWalker(object): #todo:rename
+    def __init__(self, base_cls):
+        self.base_cls = base_cls
+
+    def _iterate_attributes(self, cls, dispatch):
+        D = {}
+        exclucdes = ["__dict__", "__name__", "__doc__", "__module__", "__weakref__"]
+        for k, v in cls.__dict__.items():
+            if DeferredAttributeMarker.is_marked(v):
+                D[k] = v(cls, dispatch)
+            elif callable(v):
+                D[k] = v
+            else:
+                D[k] = copy.copy(v) ## for Column etc.
+        for k in self.base_cls.__dict__:
+            if k in D and not k in exclucdes:
+                del D[k]
+        return D
+
+    def create_definition(self, creation, cls):
+        def definition(dispatch, bases, name, model_name):
+            def on_tablename(attrs):
+                attrs.update(self._iterate_attributes(cls, dispatch))
+            attrs = dispatch.create_attrs(name, on_tablename=on_tablename)
+            return type(model_name, bases, attrs) #use model_name (not name)
+        return definition
+
+def with_walker(walker):
+    def _with_walker(cls):
+        setattr(cls, _walker_attr, walker(cls))
+        return cls
+    return _with_walker
+
+def with_tablename(keyname, marker=DeferredAttributeMarker):
+    def _with_tablename(method):
+        def __with_tablename(cls, dispatch):
+            tablename = dispatch.table_name_of(keyname)
+            return method(cls, tablename)
+        marker.mark(__with_tablename)
+        return __with_tablename
+    return _with_tablename
+
+def with_modelname(keyname, marker=DeferredAttributeMarker):
+    def _with_modelname(method):
+        def __with_modelname(cls, dispatch):
+            modelname = dispatch.model_name_of(keyname)
+            return method(cls, modelname)
+        marker.mark(__with_modelname)
+        return __with_modelname
+    return _with_modelname
+
+@with_walker(AttributesWalker)
+class ModelSeed(object):
+    pass
