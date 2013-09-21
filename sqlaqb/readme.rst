@@ -10,7 +10,7 @@ what is portable model definition?
 sqlalchemy, it is ok that just definition declarative model class depends on another model.
 (e.g. We have two model, Group and User. User depends on Group Model.)
 
-But,when providing model classes like these as a library, we want to thinking about portability.
+But,when providing model classes like these as a library, we are thinking about portability.
 
 * Library User: creating Operator model depends on User. but User class is provided by Library.
 * Library Author: We have convinient User Model, so, share it.
