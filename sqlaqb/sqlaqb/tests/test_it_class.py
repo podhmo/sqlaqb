@@ -46,26 +46,44 @@ class Tests(unittest.TestCase):
         return create_models(*args, **kwargs)
 
     def test_single(self):
-        Base = declarative_base()        
+        Base = declarative_base()
         contract = {"Group": {"table_name": "groups"}}
         models = self._callFUT(Base, contract)
-        
+
         self.assertEqual(str(models.Group.__mapper__), "Mapper|Group|groups")
         self.assertTrue(issubclass(models.Group, Base))
         self.assertTrue(models.Group.name)
         self.assertTrue(models.Group.id)
 
+        ## user is not found
+        with self.assertRaises(AttributeError):
+            models.User
+
     def test_full(self):
-        Base = declarative_base()        
+        Base = declarative_base()
         contract = {"User": {"table_name": "users"}, 
                     "Group": {"table_name": "groups", "model_name": "_Group"}}
         models = self._callFUT(Base, contract)
-        
+
         self.assertEqual(str(models._Group.__mapper__), "Mapper|_Group|groups")
         self.assertEqual(str(models.User.__mapper__), "Mapper|User|users")
         #xxx:
-        self.assertEquals(repr(list(models.User.group_id.foreign_keys)), 
+        self.assertEqual(repr(list(models.User.group_id.foreign_keys)), 
                           "[ForeignKey('groups.id')]")
+
+    def test_missing_contract(self):
+        from sqlaqb import InvalidContract
+        Base = declarative_base()
+        contract = {}
+        with self.assertRaisesRegex(InvalidContract, "is empty"):
+            self._callFUT(Base, contract)
+
+    def test_invalid_contract(self):
+        from sqlaqb import DefinitionNotFound
+        Base = declarative_base()
+        contract = {"Another": {"table_name": "another"}}
+        with self.assertRaisesRegex(DefinitionNotFound, "Another is not found"):
+            self._callFUT(Base, contract)
 
 if __name__ == "__main__":
     unittest.main()
