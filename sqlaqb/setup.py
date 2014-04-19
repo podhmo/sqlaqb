@@ -4,7 +4,7 @@ requires = [
     ]
 
 setup(name='sqlaqb',
-      version='0.0.0',
+      version='0.0.1',
       description='utility for portable model definition of sqlalchemy models',
       long_description="", 
       author='podhmo',
