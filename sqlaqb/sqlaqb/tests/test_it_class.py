@@ -37,6 +37,10 @@ class User(ModelSeed):
     def verify_password(self, password):
         return self.password_digest == password
 
+@creation.register("Inherited", depends=["User"])
+class Inherited(User):
+    pass
+
 ## test
 import unittest
 from sqlalchemy.ext.declarative import declarative_base
@@ -70,6 +74,20 @@ class Tests(unittest.TestCase):
         #xxx:
         self.assertEqual(repr(list(models.User.group_id.foreign_keys)), 
                           "[ForeignKey('groups.id')]")
+
+    def test_inherited(self):
+        Base = declarative_base()
+        contract = {
+            "Group": {"table_name": "groups"}, 
+            "User": {"table_name": "users"}, 
+            "Inherited": {"table_name": "inheriteds"}, 
+        }
+        models = self._callFUT(Base, contract)
+
+        self.assertEqual(str(models.Inherited.__mapper__), "Mapper|Inherited|inheriteds")
+        self.assertTrue(issubclass(models.Inherited, Base))
+        self.assertTrue(models.Inherited.name)
+        self.assertTrue(models.Inherited.id)
 
     def test_missing_contract(self):
         from sqlaqb import InvalidContract

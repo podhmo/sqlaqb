@@ -15,6 +15,12 @@ class DefinitionNotFound(InvalidDefinition):
 class WalkerNotFound(Exception):
     pass
 
+class NamePool(object):
+    def register(self, *args):
+        for k in args:
+            setattr(self, k, k)
+        return self
+
 class ModuleProvider(object):
     def __init__(self, creation, keyfn=id):
         self.cache = {}
@@ -187,16 +193,24 @@ class AttributesWalker(object): #todo:rename
     def __init__(self, base_cls):
         self.base_cls = base_cls
 
+    def is_exclude_class(self, cls):
+        return any(cls is k for k in [ModelSeed, object])
+
     def _iterate_attributes(self, cls, dispatch):
         D = {}
         exclucdes = ["__dict__", "__name__", "__doc__", "__module__", "__weakref__"]
-        for k, v in cls.__dict__.items():
-            if DeferredAttributeMarker.is_marked(v):
-                D[k] = v(cls, dispatch)
-            elif callable(v):
-                D[k] = v
-            else:
-                D[k] = copy.copy(v) ## for Column etc.
+        for c in reversed(cls.__mro__):
+            if self.is_exclude_class(c):
+                continue
+
+            for k, v in c.__dict__.items():
+                if DeferredAttributeMarker.is_marked(v):
+                    D[k] = v(cls, dispatch)
+                elif callable(v):
+                    D[k] = v
+                else:
+                    D[k] = copy.copy(v) ## for Column etc.
+
         for k in self.base_cls.__dict__:
             if k in D and not k in exclucdes:
                 del D[k]
