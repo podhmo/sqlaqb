@@ -11,6 +11,7 @@ setup(name='sqlaqb',
       package_dir={'': '.'},
       packages=find_packages('.'),
       install_requires = requires,
+      test_suite="sqlaqb.tests", 
       entry_points = """
       """,
       )
