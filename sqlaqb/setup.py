@@ -1,11 +1,11 @@
 from setuptools import setup, find_packages
 requires = [
-    "zope.interface"
+    "sqlalchemy"
     ]
 
 setup(name='sqlaqb',
       version='0.0.0',
-      description='fmm..',
+      description='utility for portable model definition of sqlalchemy models',
       long_description="", 
       author='podhmo',
       package_dir={'': '.'},
