@@ -190,20 +190,24 @@ class Marker(object):
 DeferredAttributeMarker = Marker("___sqlqb_deffered")
 
 class AttributesWalker(object): #todo:rename
-    def __init__(self, base_cls):
+    excludes=set(["__dict__", "__name__", "__doc__", "__module__", "__weakref__", "__new__"])
+    def __init__(self, base_cls, excludes=excludes):
         self.base_cls = base_cls
+        self.excludes = excludes
 
     def is_exclude_class(self, cls):
         return any(cls is k for k in [ModelSeed, object])
 
     def _iterate_attributes(self, cls, dispatch):
         D = {}
-        exclucdes = ["__dict__", "__name__", "__doc__", "__module__", "__weakref__"]
+
         for c in reversed(cls.__mro__):
             if self.is_exclude_class(c):
                 continue
 
             for k, v in c.__dict__.items():
+                if k in self.excludes:
+                    continue
                 if DeferredAttributeMarker.is_marked(v):
                     D[k] = v(cls, dispatch)
                 elif callable(v):
@@ -212,7 +216,7 @@ class AttributesWalker(object): #todo:rename
                     D[k] = copy.copy(v) ## for Column etc.
 
         for k in self.base_cls.__dict__:
-            if k in D and not k in exclucdes:
+            if k in D:
                 del D[k]
         return D
 

@@ -37,9 +37,21 @@ class User(ModelSeed):
     def verify_password(self, password):
         return self.password_digest == password
 
+
 @creation.register("Inherited", depends=["User"])
 class Inherited(User):
     pass
+
+
+class HasNameMixin(object):
+    name=sa.Column(sa.String(255), nullable=False)
+class HasIdMixin(object):
+    id=sa.Column(sa.Integer, primary_key=True, nullable=False)
+
+@creation.register("WithMixin")
+class WithMixin(HasIdMixin, HasNameMixin, ModelSeed):
+    pass
+
 
 ## test
 import unittest
@@ -88,6 +100,21 @@ class Tests(unittest.TestCase):
         self.assertTrue(issubclass(models.Inherited, Base))
         self.assertTrue(models.Inherited.name)
         self.assertTrue(models.Inherited.id)
+
+
+    def test_withmixin(self):
+        Base = declarative_base()
+        contract = {
+            "WithMixin": {"table_name": "withmixins"}, 
+        }
+        models = self._callFUT(Base, contract)
+
+        self.assertEqual(str(models.WithMixin.__mapper__), "Mapper|WithMixin|withmixins")
+        self.assertTrue(issubclass(models.WithMixin, Base))
+        self.assertTrue(models.WithMixin.name)
+        self.assertTrue(models.WithMixin.id)
+
+
 
     def test_missing_contract(self):
         from sqlaqb import InvalidContract
